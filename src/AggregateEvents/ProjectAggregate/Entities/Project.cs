@@ -1,6 +1,8 @@
 ﻿using AggregateEvents.Interfaces;
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.Linq;
 using System.Text;
 
@@ -16,28 +18,53 @@ namespace AggregateEvents.Model
         public string Name { get; set; }
         public string Status { get; private set; } = "New";
 
-        private List<Task> _tasks = new List<Task>();
+        private ObservableCollection<Task> _tasks = new ObservableCollection<Task>();
         private List<string> _activityLog = new List<string>();
         private int _hoursLimit = 10; // total hours cannot exceed this amount
 
         public IEnumerable<Task> Tasks
         {
-            get { return _tasks.AsReadOnly(); }
+            get { return _tasks; }
         }
 
         public Project()
         {
-            AggregateEvents.Register<TaskCompletedEvent>(HandleTaskCompleted);
-            AggregateEvents.Register<TaskHoursUpdatedEvent>(HandleTaskHoursUpdated);
+            _tasks.CollectionChanged += Tasks_CollectionChanged;
         }
 
-        private void HandleTaskHoursUpdated(TaskHoursUpdatedEvent taskHoursUpdatedEvent)
+        private void Tasks_CollectionChanged(object sender, NotifyCollectionChangedEventArgs e)
+        {
+            if (e.Action == NotifyCollectionChangedAction.Add)
+            {
+                foreach (var task in e.NewItems.OfType<Task>())
+                {
+                    task.Completed += HandleTaskCompleted;
+                    task.HoursUpdated += HandleTaskHoursUpdated;
+                }
+
+                return;
+            }
+
+            if (e.Action == NotifyCollectionChangedAction.Remove)
+            {
+                foreach (var task in e.OldItems.OfType<Task>())
+                {
+                    task.Completed -= HandleTaskCompleted;
+                    task.HoursUpdated -= HandleTaskHoursUpdated;
+                }
+
+                return;
+            }
+        }
+
+        private void HandleTaskHoursUpdated(object sender, TaskHoursUpdatedEvent taskHoursUpdatedEvent)
         {
             if (taskHoursUpdatedEvent.Task.ProjectId != Id) return;
             if(!VerifyHoursWithinLimit())
             {
                 Log("Update would exceed project hour limit.");
-                throw new Exception("Project hour limit exceeded.");
+                taskHoursUpdatedEvent.CancelRequested = true;
+                return;
             }
             UpdateStatus();
         }
@@ -47,7 +74,7 @@ namespace AggregateEvents.Model
             return _tasks.Sum(t => t.HoursRemaining) + newTaskHours <= _hoursLimit;
         }
 
-        private void HandleTaskCompleted(TaskCompletedEvent taskCompletedEvent)
+        private void HandleTaskCompleted(object sender, TaskCompletedEvent taskCompletedEvent)
         {
             if (taskCompletedEvent.Task.ProjectId != Id) return;
             UpdateStatus();

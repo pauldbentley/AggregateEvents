@@ -26,7 +26,6 @@ namespace AggregateEvents.Tests
         [Fact]
         public void HandleOwnTaskCompletedEventOnly()
         {
-            AggregateEvents.ClearCallbacks();
             var project = new Project();
             string taskName = Guid.NewGuid().ToString();
             project.AddTask(taskName, 1);
@@ -34,7 +33,7 @@ namespace AggregateEvents.Tests
             // project 2 has no tasks assigned to it.
             var project2 = new Project();
 
-            AggregateEvents.Raise(new TaskCompletedEvent(project.Tasks.First()));
+            project.Tasks.First().MarkComplete();
 
             Assert.Contains(taskName, project.ToString());
             Assert.DoesNotContain(taskName, project2.ToString());
@@ -43,7 +42,6 @@ namespace AggregateEvents.Tests
         [Fact]
         public void HandleOwnTaskHoursUpdatedEventOnly()
         {
-            AggregateEvents.ClearCallbacks();
             var project = new Project();
             string taskName = Guid.NewGuid().ToString();
             project.AddTask(taskName, 1);
